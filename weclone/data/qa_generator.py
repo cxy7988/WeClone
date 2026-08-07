@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import re
@@ -117,6 +118,121 @@ class DataProcessor:
 
         self.relations = {}
 
+    def _preprocess_checkpoint_path(self) -> str:
+        safe_dataset_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", self.config.dataset)
+        return os.path.join(
+            self.config.dataset_dir, f".{safe_dataset_name}-make-dataset-checkpoint.json"
+        )
+
+    def _preprocess_fingerprint(self, csv_files: List[str]) -> str:
+        """Fingerprint source data and options which affect generated QA pairs."""
+        vision_config = self.config.vision_api.model_dump(mode="json", exclude={"api_key"})
+        config_values = {
+            "version": 1,
+            "platform": self.config.platform.value,
+            "language": self.config.language.value,
+            "include_type": [item.value for item in self.config.include_type],
+            "max_image_num": self.config.max_image_num,
+            "blocked_words": self.config.blocked_words,
+            "add_time": self.config.add_time,
+            "add_relation": self.config.add_relation,
+            "single_combine_strategy": self.config.single_combine_strategy.value,
+            "qa_match_strategy": self.config.qa_match_strategy.value,
+            "single_combine_time_window": self.config.single_combine_time_window,
+            "qa_match_time_window": self.config.qa_match_time_window,
+            "combine_msg_max_length": self.config.combine_msg_max_length,
+            "messages_max_length": self.config.messages_max_length,
+            "prompt_with_history": self.config.prompt_with_history,
+            "default_system": self.config.default_system,
+            "media_dir": self.config.media_dir,
+            "vision_api": vision_config,
+        }
+
+        digest = hashlib.sha256()
+        digest.update(json.dumps(config_values, sort_keys=True, ensure_ascii=False).encode("utf-8"))
+        for csv_file in sorted(csv_files):
+            digest.update(os.path.relpath(csv_file).encode("utf-8"))
+            with open(csv_file, "rb") as file:
+                while chunk := file.read(1024 * 1024):
+                    digest.update(chunk)
+
+            if self.config.add_relation:
+                users_json_path = os.path.join(os.path.dirname(csv_file), "users.json")
+                if os.path.exists(users_json_path):
+                    digest.update(os.path.relpath(users_json_path).encode("utf-8"))
+                    with open(users_json_path, "rb") as file:
+                        while chunk := file.read(1024 * 1024):
+                            digest.update(chunk)
+
+        return digest.hexdigest()
+
+    def _load_preprocess_checkpoint(
+        self, csv_files: List[str]
+    ) -> tuple[List[QaPair] | None, str]:
+        fingerprint = self._preprocess_fingerprint(csv_files)
+        checkpoint_path = self._preprocess_checkpoint_path()
+        if not os.path.exists(checkpoint_path):
+            return None, fingerprint
+
+        try:
+            with open(checkpoint_path, "r", encoding="utf-8") as file:
+                checkpoint = json.load(file)
+
+            if checkpoint.get("version") != 1 or checkpoint.get("fingerprint") != fingerprint:
+                logger.info("Make-dataset checkpoint does not match current input; rebuilding data")
+                return None, fingerprint
+
+            qa_res = [
+                QaPair(
+                    id=int(item["id"]),
+                    time=Timestamp(item["time"]),
+                    score=int(item.get("score", 0)),
+                    messages=[
+                        Message(role=msg["role"], content=msg["content"])
+                        for msg in item["messages"]
+                    ],
+                    images=list(item.get("images", [])),
+                    system=item["system"],
+                )
+                for item in checkpoint["items"]
+            ]
+            logger.success(
+                f"Resumed {len(qa_res)} QA pairs from make-dataset checkpoint: {checkpoint_path}"
+            )
+            return qa_res, fingerprint
+        except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as error:
+            logger.warning(f"Failed to load make-dataset checkpoint, rebuilding data: {error}")
+            return None, fingerprint
+
+    def _save_preprocess_checkpoint(self, qa_res: List[QaPair], fingerprint: str) -> None:
+        checkpoint_path = self._preprocess_checkpoint_path()
+        os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
+        temporary_path = f"{checkpoint_path}.tmp"
+        checkpoint = {
+            "version": 1,
+            "fingerprint": fingerprint,
+            "items": [
+                {
+                    "id": item.id,
+                    "time": item.time.isoformat(),
+                    "score": item.score,
+                    "messages": [
+                        {"role": message.role, "content": message.content}
+                        for message in item.messages
+                    ],
+                    "images": item.images,
+                    "system": item.system,
+                }
+                for item in qa_res
+            ],
+        }
+        with open(temporary_path, "w", encoding="utf-8") as file:
+            json.dump(checkpoint, file, ensure_ascii=False)
+        os.replace(temporary_path, checkpoint_path)
+        logger.success(
+            f"Saved {len(qa_res)} QA pairs to make-dataset checkpoint: {checkpoint_path}"
+        )
+
     def main(self):
         self.pre_parse_chat_dataset()
 
@@ -128,20 +244,26 @@ class DataProcessor:
 
         csv_files = self.get_csv_files()
         logger.info(f"Found {len(csv_files)} CSV files in total, starting processing, please be patient...")
-        message_list: List[ChatMessage] = []
-        for csv_file in csv_files:
-            logger.debug(f"Starting to process CSV file: {csv_file}")
-            chat_messages = self.load_file(csv_file)
-            message_list.extend(self.group_consecutive_messages(messages=chat_messages))
-            # self.process_by_msgtype(chat_message)
-            logger.debug(f"Processing completed: {csv_file}, loaded {len(chat_messages)} messages in total")
-        qa_res = self.match_qa(messages=message_list)
-        qa_res = [item for item in qa_res if isinstance(item, QaPair)]
+        qa_res, preprocess_fingerprint = self._load_preprocess_checkpoint(csv_files)
+        if qa_res is None:
+            message_list: List[ChatMessage] = []
+            for csv_file in csv_files:
+                logger.debug(f"Starting to process CSV file: {csv_file}")
+                chat_messages = self.load_file(csv_file)
+                message_list.extend(self.group_consecutive_messages(messages=chat_messages))
+                # self.process_by_msgtype(chat_message)
+                logger.debug(
+                    f"Processing completed: {csv_file}, loaded {len(chat_messages)} messages in total"
+                )
+            matched_results = self.match_qa(messages=message_list)
+            qa_res = [item for item in matched_results if isinstance(item, QaPair)]
 
-        if self.image_processor:
-            logger.info("Starting image recognition process...")
-            qa_res = self.image_processor._process_images_in_parallel(qa_res)
-            logger.info("Image recognition process completed.")
+            if self.image_processor:
+                logger.info("Starting image recognition process...")
+                qa_res = self.image_processor._process_images_in_parallel(qa_res)
+                logger.info("Image recognition process completed.")
+
+            self._save_preprocess_checkpoint(qa_res, preprocess_fingerprint)
 
         if self.enable_clean:
             self.clean_strategy.judge(qa_res)  # type: ignore
@@ -606,9 +728,10 @@ class DataProcessor:
         df = pd.read_csv(
             file_path,
             encoding="utf-8",
-            dtype={"msg": str, "src": str},
+            dtype={"MsgSvrID": str, "msg": str, "src": str},
             escapechar=None,
             keep_default_na=False,
+            low_memory=False,
         )
 
         df = df[~df["type_name"].isin(values=self.skip_type_list)]

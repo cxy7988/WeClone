@@ -102,6 +102,12 @@ class LLMCleanConfig(BaseConfigModel):
         description="Acceptable LLM scoring threshold: 1 (worst) to 5 (best). Data scoring below this threshold will not be used for training.",
     )
     enable_thinking: bool = Field(False, description="used in llama-factory")
+    parse_max_retries: int = Field(
+        2, ge=0, description="Additional retries when an online cleaning response is invalid JSON"
+    )
+    parse_retry_delay: float = Field(
+        1.0, ge=0, description="Delay in seconds before retrying an invalid online cleaning response"
+    )
 
 
 class CleanDatasetConfig(BaseConfigModel):
@@ -250,6 +256,9 @@ class TrainPtArgs(TrainSftArgs):
 
 
 class InferArgs(BaseConfigModel):
+    infer_backend: Literal["huggingface", "vllm"] = Field(
+        "huggingface", description="Backend engine used for inference"
+    )
     repetition_penalty: float = Field(1.2, description="Repetition penalty")
     temperature: float = Field(..., description="Temperature")
     top_p: float = Field(..., description="Top-p sampling")

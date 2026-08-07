@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 from abc import ABC, abstractmethod
@@ -154,6 +155,56 @@ class LLMCleaningStrategy(CleaningStrategy):
 class OlineLLMCleaningStrategy(CleaningStrategy):
     """Strategy for data cleaning using large language models"""
 
+    def _score_checkpoint_path(self) -> str:
+        safe_dataset_name = "".join(
+            character if character.isalnum() or character in "._-" else "_"
+            for character in self.make_dataset_config.dataset
+        )
+        return os.path.join(
+            self.make_dataset_config.dataset_dir,
+            f".{safe_dataset_name}-online-score-checkpoint.json",
+        )
+
+    def _load_score_checkpoint(self) -> dict[str, dict[str, int | str]]:
+        checkpoint_path = self._score_checkpoint_path()
+        if not os.path.exists(checkpoint_path):
+            return {}
+
+        try:
+            with open(checkpoint_path, "r", encoding="utf-8") as file:
+                checkpoint = json.load(file)
+
+            config = self.make_dataset_config
+            if (
+                checkpoint.get("version") != 1
+                or checkpoint.get("model_name") != config.model_name
+                or checkpoint.get("base_url") != config.base_url
+            ):
+                logger.info("Online scoring checkpoint does not match the current model; starting fresh")
+                return {}
+
+            entries = checkpoint.get("entries", {})
+            if not isinstance(entries, dict):
+                raise TypeError("Checkpoint entries must be an object")
+            return entries
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
+            logger.warning(f"Failed to load online scoring checkpoint, starting fresh: {error}")
+            return {}
+
+    def _save_score_checkpoint(self, entries: dict[str, dict[str, int | str]]) -> None:
+        checkpoint_path = self._score_checkpoint_path()
+        os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
+        temporary_path = f"{checkpoint_path}.tmp"
+        checkpoint = {
+            "version": 1,
+            "model_name": self.make_dataset_config.model_name,
+            "base_url": self.make_dataset_config.base_url,
+            "entries": entries,
+        }
+        with open(temporary_path, "w", encoding="utf-8") as file:
+            json.dump(checkpoint, file, ensure_ascii=False)
+        os.replace(temporary_path, checkpoint_path)
+
     # TODO: images clean support
     def judge(self, data: List[QaPair]) -> None:
         config = self.make_dataset_config
@@ -167,7 +218,9 @@ class OlineLLMCleaningStrategy(CleaningStrategy):
             max_workers=config.clean_batch_size + 5,
         )
 
-        inputs = []
+        checkpoint_entries = self._load_score_checkpoint()
+        pending_items: list[tuple[QaPair, str, str]] = []
+        resumed_count = 0
         prompt_template = PromptTemplate.from_template(CLEAN_PROMPT)
         for qa in data:
             if qa.images:
@@ -180,37 +233,77 @@ class OlineLLMCleaningStrategy(CleaningStrategy):
                     elif msg.role == "assistant":
                         messages_str += f"A: {msg.content}\n"
                 prompt_value = prompt_template.invoke({"id": qa.id, "messages": messages_str.strip()})
-                inputs.append(prompt_value.to_string())
+                prompt = prompt_value.to_string()
+                prompt_fingerprint = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+                checkpoint_entry = checkpoint_entries.get(str(qa.id), {})
+                checkpoint_score = checkpoint_entry.get("score")
+                if (
+                    checkpoint_entry.get("prompt_fingerprint") == prompt_fingerprint
+                    and isinstance(checkpoint_score, int)
+                    and 1 <= checkpoint_score <= 5
+                ):
+                    qa.score = checkpoint_score
+                    resumed_count += 1
+                else:
+                    qa.score = 0
+                    pending_items.append((qa, prompt, prompt_fingerprint))
+
+        if resumed_count:
+            logger.success(
+                f"Resumed {resumed_count} online scores from checkpoint; "
+                f"{len(pending_items)} items remain"
+            )
 
         clean_batch_size = config.clean_batch_size
-        all_parsed_scores = []
 
-        for i in tqdm(range(0, len(inputs), clean_batch_size), desc="Online model scoring progress"):
-            batch = inputs[i : i + clean_batch_size]
+        for i in tqdm(
+            range(0, len(pending_items), clean_batch_size),
+            desc="Online model scoring progress",
+        ):
+            batch_items = pending_items[i : i + clean_batch_size]
+            batch_prompts = [prompt for _, prompt, _ in batch_items]
 
             try:
-                parsed_results, failed_indexs = client.chat_batch(
-                    batch, temperature=0, guided_decoding_class=QaPairScoreWithId
+                parsed_results, _failed_indexs = client.chat_batch(
+                    batch_prompts,
+                    temperature=0,
+                    guided_decoding_class=QaPairScoreWithId,
+                    parse_max_retries=config.clean_dataset.llm.parse_max_retries,
+                    parse_retry_delay=config.clean_dataset.llm.parse_retry_delay,
                 )
 
-                for j, parsed_result in enumerate(parsed_results):
-                    if parsed_result is not None:
-                        all_parsed_scores.append(parsed_result)
+                saved_count = 0
+                for j, (qa, _, prompt_fingerprint) in enumerate(batch_items):
+                    parsed_result = parsed_results[j]
+                    if parsed_result is not None and parsed_result.id == qa.id:
+                        qa.score = parsed_result.score
+                        checkpoint_entries[str(qa.id)] = {
+                            "prompt_fingerprint": prompt_fingerprint,
+                            "score": parsed_result.score,
+                        }
+                        saved_count += 1
+                    elif parsed_result is not None:
+                        logger.warning(
+                            f"Score result ID mismatch at batch item {i + j}: "
+                            f"expected {qa.id}, got {parsed_result.id}"
+                        )
                     else:
                         logger.warning(f"Failed to parse result for batch item at index {i + j}")
+
+                if saved_count:
+                    self._save_score_checkpoint(checkpoint_entries)
 
             except Exception as e:
                 logger.error(
                     f"Failed to call online model or parse result for batch starting at index {i}, error: {str(e)}"
                 )
 
-        score_map = {score.id: score.score for score in all_parsed_scores}
-        for qa in data:
-            if qa.id in score_map:
-                qa.score = score_map[qa.id]
-            else:
-                logger.warning(f"No score obtained for QA ID {qa.id}, default assigned 0")
-                qa.score = 0
+        unresolved_count = sum(1 for qa, _, _ in pending_items if qa.score == 0)
+        if unresolved_count:
+            logger.warning(
+                f"No score obtained for {unresolved_count} QA items; default assigned 0. "
+                "They will be retried on the next run."
+            )
 
         scores = [qa.score for qa in data if qa.score is not None]
         score_series = pd.Series(scores)

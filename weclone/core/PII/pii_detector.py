@@ -176,7 +176,11 @@ class PIIDetector:
             language=self.language,
             entities=self.filtered_entities,
             score_threshold=self.threshold,
-            n_process=24,
+            # spaCy cannot safely use multiprocessing with a GPU-backed
+            # pipeline: every child process tries to initialize CUDA again
+            # and fails with cudaErrorInitializationError. A single process
+            # still batches work on the GPU and is also safe on CPU-only hosts.
+            n_process=1,
             batch_size=32,
         )
 

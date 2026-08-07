@@ -1,4 +1,5 @@
 import logging
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any, Callable, List, Optional, Union
 
@@ -90,6 +91,8 @@ class OnlineLLM:
         stream: bool = False,
         callback: Optional[Callable[[int, Any], None]] = None,
         guided_decoding_class: Optional[type[BaseModel]] = None,
+        parse_max_retries: int = 0,
+        parse_retry_delay: float = 1.0,
     ) -> Union[List[Union[ChatCompletion, Exception]], tuple[List[Optional[BaseModel]], List[int]]]:
         """Process multiple chat requests concurrently using thread pool
 
@@ -101,6 +104,8 @@ class OnlineLLM:
             stream: Whether to stream the response
             callback: Optional callback function called for each result
             guided_decoding_class: Pydantic model class for JSON validation
+            parse_max_retries: Number of additional requests for responses which cannot be parsed
+            parse_retry_delay: Delay in seconds before each parse-failure retry
 
         Returns:
             If enable_json_decode is False: List of ChatCompletion or Exception objects
@@ -152,7 +157,51 @@ class OnlineLLM:
                     logger.warning(f"Unexpected result type at index {i}: {type(result)}")
                     failed_indexs.append(i)
 
-            return parsed_results, failed_indexs
+            remaining_failed_indexs = failed_indexs
+            for attempt in range(1, parse_max_retries + 1):
+                if not remaining_failed_indexs:
+                    break
+
+                if parse_retry_delay > 0:
+                    time.sleep(parse_retry_delay)
+
+                retry_original_indexs = remaining_failed_indexs
+                retry_prompts = [prompts[index] for index in retry_original_indexs]
+                logger.warning(
+                    f"Retrying {len(retry_prompts)} responses with invalid JSON "
+                    f"(retry {attempt}/{parse_max_retries})"
+                )
+
+                retry_output = self.chat_batch(
+                    retry_prompts,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    top_p=top_p,
+                    stream=stream,
+                    guided_decoding_class=guided_decoding_class,
+                    parse_max_retries=0,
+                    parse_retry_delay=0,
+                )
+                if not isinstance(retry_output, tuple):
+                    raise TypeError("Guided-decoding retry did not return parsed results")
+
+                retry_parsed_results, retry_failed_indexs = retry_output
+                for retry_index, parsed_result in enumerate(retry_parsed_results):
+                    if parsed_result is not None:
+                        original_index = retry_original_indexs[retry_index]
+                        parsed_results[original_index] = parsed_result
+
+                remaining_failed_indexs = [
+                    retry_original_indexs[retry_index] for retry_index in retry_failed_indexs
+                ]
+
+            if remaining_failed_indexs and parse_max_retries > 0:
+                logger.warning(
+                    f"{len(remaining_failed_indexs)} responses still contain invalid JSON "
+                    f"after {parse_max_retries} retries"
+                )
+
+            return parsed_results, remaining_failed_indexs
 
         return results
 

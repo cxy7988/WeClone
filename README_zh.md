@@ -150,6 +150,24 @@ uv pip install "deepspeed<=0.16.9"
 deepspeed --num_gpus=使用显卡数量 weclone/train/train_sft.py
 ```
 
+仓库中的双卡启动脚本会固定使用 CUDA 12.6，并将终端输出同时保存到 `logs/train_sft_时间戳.log`：
+```bash
+./scripts/train.sh
+```
+该脚本默认使用 2 张 GPU，CUDA 路径为 `/usr/local/cuda-12.6`。如果本机安装路径不同，请先修改脚本中的 `CUDA_TOOLKIT_DIR`。
+
+当前 `ds_config.json` 使用 ZeRO Stage 3，并将优化器和模型参数卸载到 CPU，可降低 14B 模型在双 24GB GPU 上训练时的显存占用。参数卸载会产生频繁的 CPU-GPU 数据传输，因此训练速度会明显降低。
+
+LLaMA-Factory 使用 `disable_gradient_checkpointing` 控制梯度检查点。设置为 `true` 表示关闭梯度检查点，可提高训练速度，但会增加显存占用：
+```json
+"disable_gradient_checkpointing": true
+```
+
+训练按照 `save_steps` 定期在 `output_dir` 下保存 checkpoint。当前 `save_steps` 为 100，因此会生成 `model_output/checkpoint-100`、`checkpoint-200` 等目录。需要完整恢复优化器和学习率调度器状态时，可在 `train_sft_args` 中指定：
+```json
+"resume_from_checkpoint": "./model_output/checkpoint-100"
+```
+
 ### 使用浏览器demo简单推理
 测试出合适的temperature、top_p值，修改settings.jsonc的`infer_args`后，供后续推理时使用。
 ```bash
