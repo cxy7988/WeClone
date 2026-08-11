@@ -27,6 +27,34 @@
             "assistant_tag": "assistant"
         }
     },
+    "chat-sft-cleaned-train": {
+        "file_name": "./sft-my-cleaned-train.json",
+        "formatting": "sharegpt",
+        "columns": {
+            "messages": "messages",
+            "system": "system"
+        },
+        "tags": {
+            "role_tag": "role",
+            "content_tag": "content",
+            "user_tag": "user",
+            "assistant_tag": "assistant"
+        }
+    },
+    "chat-sft-cleaned-val": {
+        "file_name": "./sft-my-cleaned-val.json",
+        "formatting": "sharegpt",
+        "columns": {
+            "messages": "messages",
+            "system": "system"
+        },
+        "tags": {
+            "role_tag": "role",
+            "content_tag": "content",
+            "user_tag": "user",
+            "assistant_tag": "assistant"
+        }
+    },
     "chat-sft-vl": {
         "file_name": "./sft-my.json",
         "formatting": "sharegpt",

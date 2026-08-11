@@ -116,6 +116,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv-qwen35/
 env/
 venv/
 ENV/
@@ -187,7 +188,7 @@ dataset/*telegram*/*
 !*.gitkeep
 WC-exp/*
 
-modeloutputs/*
+models/
 /tmp/*
 cache.pkl
 hfd.sh
@@ -198,4 +199,6 @@ models_final/*
 /llamaboard_cache
 eval_Result/*
 .claude/*
+settings.jsonc
+logs/
 settings.jsonc
