@@ -6,6 +6,7 @@ from llamafactory.extras.misc import get_current_device
 from llamafactory.train.tuner import run_exp
 
 from weclone.data.clean.strategies import LLMCleaningStrategy
+from weclone.train.transformers_compat import patch_transformers_560_flash_attention_none_sink
 from weclone.utils.config import load_config
 from weclone.utils.config_models import WCMakeDatasetConfig, WCTrainSftConfig
 from weclone.utils.log import logger
@@ -39,6 +40,9 @@ def main():
 
     formatted_config = json.dumps(train_config.model_dump(mode="json"), indent=4, ensure_ascii=False)
     logger.info(f"Fine-tuning configuration:\n{formatted_config}")
+
+    if train_config.flash_attn == "fa2":
+        patch_transformers_560_flash_attention_none_sink()
 
     # Build config dict and remove nested 'quantization' key (its fields are already flattened at top level)
     config_dict = train_config.model_dump(mode="json", exclude_none=True)

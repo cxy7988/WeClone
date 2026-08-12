@@ -1,8 +1,6 @@
 {
-    "version": "0.3.01",
+    "version": "0.3.04",
     "common_args": {
-        "model_name_or_path": "./models/Qwen2.5-7B-Instruct",
-        "adapter_name_or_path": "./model_output", //同时做为train_sft_args的output_dir
         "template": "qwen",
         "default_system": "请你扮演一名人类，不要说自己是人工智能",
         "media_dir": "dataset/media",
@@ -62,6 +60,9 @@
     },
     "train_sft_args": {
         //微调配置
+        "model_name_or_path": "./models/Qwen2.5-7B-Instruct", //训练输入：基础模型
+        "resume_adapter_name_or_path": null, //训练输入：续训时使用的LoRA；从头训练保持null
+        "output_dir": "./model_output", //训练输出：checkpoint和最终adapter
         "stage": "sft",
         "dataset": "chat-sft",
         "dataset_dir": "./dataset/res_csv/sft",
@@ -86,6 +87,9 @@
         // "deepspeed": "ds_config.json" //多卡训练
     },
     "infer_args": {
+        "model_name_or_path": "./models/Qwen2.5-7B-Instruct", //推理输入：完整模型或基础模型
+        "adapter_name_or_path": "./model_output", //推理输入：未合并LoRA；合并模型请设为null
+        "infer_backend": "vllm", //vLLM 0.27.1原生支持Qwen3.5
         "repetition_penalty": 1.2,
         "temperature": 0.5,
         "max_length": 256,

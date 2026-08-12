@@ -94,6 +94,18 @@ def capture_output(func):
                         self.log_method(escaped_log, raw=True)
                     self.current_line_content = ""
 
+            def isatty(self):
+                """Preserve terminal capability checks used by Uvicorn and Rich."""
+                return self.original_stream.isatty()
+
+            def fileno(self):
+                """Expose the underlying file descriptor to stream consumers."""
+                return self.original_stream.fileno()
+
+            @property
+            def encoding(self):
+                return self.original_stream.encoding
+
         sys.stdout = OutputTeeToGlobalLog(original_stdout, logger.opt(raw=True).info)
         sys.stderr = OutputTeeToGlobalLog(original_stderr, logger.opt(raw=True).error)
 

@@ -134,42 +134,160 @@ weclone-cli make-dataset
 
 ## 配置参数并微调模型
 
-- (可选)修改 `settings.jsonc` 的 `model_name_or_path` 、`template`、 `lora_target`选择本地下载好的其他模型。  
-- 修改`per_device_train_batch_size`以及`gradient_accumulation_steps`来调整显存占用。  
-- 可以根据自己数据集的数量和质量修改`train_sft_args`的`num_train_epochs`、`lora_rank`、`lora_dropout`等参数。
+当前本地训练配置用于对
+`/home/hdd/2/cxy/FujiLLM_finetuning/models/Qwen3.5-4B` 进行 LoRA SFT，主要设置如下：
 
-### 单卡训练
-```bash
-weclone-cli train-sft
+- 使用 BF16；全注意力层使用 FlashAttention 2，线性注意力层使用 FLA，关闭 FP16。
+- 关闭 DeepSpeed，默认使用单张 GPU。
+- 跳过本轮数据清洗，直接复用上一轮已经清洗的数据。
+- 按时间将已清洗数据的前 95% 用于训练，时间最新的 5% 用于验证。
+- 每 100 steps 记录验证损失并保存 checkpoint。
+- 将训练和验证指标上报到 Weights & Biases。
+- 训练结束后载入 `eval_loss` 最低的 checkpoint。
+
+### 训练集与验证集
+
+已清洗的 15,217 条对话按 `time` 字段严格升序划分：
+
+| 用途 | 数据集名称 | 文件 | 数量 |
+|------|------------|------|-----:|
+| 训练 | `chat-sft-cleaned-train` | `dataset/res_csv/sft/sft-my-cleaned-train.json` | 14,456 |
+| 验证 | `chat-sft-cleaned-val` | `dataset/res_csv/sft/sft-my-cleaned-val.json` | 761 |
+
+两个数据集均在 `dataset/res_csv/sft/dataset_info.json` 中注册。原始的
+`sft-my-cleaned.json` 保持不变。不要同时设置 `val_size`，否则会与显式的
+`eval_dataset` 冲突。
+
+训练过程中可以在 W&B 中比较 `train/loss` 和 `eval/loss`。如果训练损失继续下降，验证损失却开始上升，通常表示模型开始过拟合。
+
+### Qwen3.5 运行环境
+
+> [!IMPORTANT]
+> 仓库现有 `.venv` 使用 Transformers 4.53.2，不能识别 `qwen3_5`，并且当前未安装
+> `wandb`。启动训练前必须准备同时支持 Qwen3.5、LLaMA-Factory、FlashAttention 2
+> 和 W&B 的 Python 环境。启动脚本只做兼容性检查，不会自动联网安装或修改依赖。
+
+兼容环境至少需要能够导入以下模块：
+
+```text
+torch
+transformers
+llamafactory
+flash_attn
+fla
+causal_conv1d
+wandb
+pyjson5
 ```
 
-### 多卡训练
-取消`settings.jsonc`中`deepspeed`行代码注释，使用以下命令多卡训练：
+使用 W&B 在线监控前还需在该环境中完成一次登录：
+
 ```bash
-uv pip install "deepspeed<=0.16.9"
-deepspeed --num_gpus=使用显卡数量 weclone/train/train_sft.py
+/path/to/compatible/python -m wandb login
 ```
 
-仓库中的双卡启动脚本会固定使用 CUDA 12.6，并将终端输出同时保存到 `logs/train_sft_时间戳.log`：
+### 一键启动单卡训练
+
+从项目根目录执行：
+
 ```bash
-./scripts/train.sh
+WECLONE_PYTHON=/path/to/compatible/python ./scripts/train_qwen35.sh
 ```
-该脚本默认使用 2 张 GPU，CUDA 路径为 `/usr/local/cuda-12.6`。如果本机安装路径不同，请先修改脚本中的 `CUDA_TOOLKIT_DIR`。
 
-当前 `ds_config.json` 使用 ZeRO Stage 3，并将优化器和模型参数卸载到 CPU，可降低 14B 模型在双 24GB GPU 上训练时的显存占用。参数卸载会产生频繁的 CPU-GPU 数据传输，因此训练速度会明显降低。
+如果兼容环境就是项目的 `.venv`，可以直接执行：
 
-LLaMA-Factory 使用 `disable_gradient_checkpointing` 控制梯度检查点。设置为 `true` 表示关闭梯度检查点，可提高训练速度，但会增加显存占用：
-```json
+```bash
+./scripts/train_qwen35.sh
+```
+
+脚本启动前会检查模型、配置、训练集、验证集、CUDA、BF16 和依赖，然后执行
+`weclone-cli train-sft`。终端输出同时写入：
+
+```text
+logs/train_qwen35_YYYYMMDD_HHMMSS.log
+```
+
+可通过环境变量选择 GPU 或覆盖 W&B 项目名：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 \
+WANDB_PROJECT=WeClone-Qwen3.5-SFT \
+WECLONE_PYTHON=/path/to/compatible/python \
+./scripts/train_qwen35.sh
+```
+
+脚本会显式设置 `ACCELERATE_USE_DEEPSPEED=false`，与 `settings.jsonc` 中的配置一致。
+
+### 显存与训练速度
+
+有效 batch size 的计算方式为：
+
+```text
+per_device_train_batch_size × gradient_accumulation_steps × GPU 数量
+```
+
+在保持有效 batch size 不变的情况下，可以增大单卡 batch 并等比例降低梯度累积。例如单卡的 `1 × 16` 可以改为 `2 × 8`，通常能提高 GPU 利用率且不改变整体 batch size。
+
+LLaMA-Factory 使用反向命名的 `disable_gradient_checkpointing` 控制梯度检查点：
+
+```json5
 "disable_gradient_checkpointing": true
 ```
 
-训练按照 `save_steps` 定期在 `output_dir` 下保存 checkpoint。当前 `save_steps` 为 100，因此会生成 `model_output/checkpoint-100`、`checkpoint-200` 等目录。需要完整恢复优化器和学习率调度器状态时，可在 `train_sft_args` 中指定：
-```json
-"resume_from_checkpoint": "./model_output/checkpoint-100"
+`true` 表示关闭梯度检查点，可以加快训练，但会增加显存占用。
+
+### W&B、验证与 checkpoint
+
+相关的 `train_sft_args` 配置如下：
+
+```json5
+"report_to": "wandb",
+"do_eval": true,
+"eval_strategy": "steps",
+"eval_steps": 100,
+"save_strategy": "steps",
+"save_steps": 100,
+"load_best_model_at_end": true,
+"metric_for_best_model": "eval_loss",
+"greater_is_better": false
 ```
 
+`eval_steps` 与 `save_steps` 需要保持兼容，才能正确载入最佳 checkpoint。
+
+训练的输入、续训 adapter 和输出目录均在 `train_sft_args` 中独立设置：
+
+```json5
+"model_name_or_path": "/path/to/base-model",
+"resume_adapter_name_or_path": null,
+"output_dir": "./model_output/Qwen3.5-4B-SFT"
+```
+
+`resume_adapter_name_or_path` 只用于从已有 LoRA 继续训练；从头训练时保持 `null`。
+
+按照当前保存频率，会在该目录下生成 `checkpoint-100`、`checkpoint-200` 等目录。需要恢复完整的优化器和学习率调度器状态时，可以在 `train_sft_args` 中设置：
+
+```json5
+"resume_from_checkpoint": "./model_output/Qwen3.5-4B-SFT/checkpoint-100"
+```
+
+从头重新训练时不要设置 `resume_from_checkpoint`，并使用一个新的或空的输出目录。
+
 ### 使用浏览器demo简单推理
-测试出合适的temperature、top_p值，修改settings.jsonc的`infer_args`后，供后续推理时使用。
+推理输入独立放在 `infer_args` 中。使用已合并的完整模型时：
+
+```json5
+"model_name_or_path": "./model_output/Qwen3.5-4B-SFT-1500-merged",
+"adapter_name_or_path": null
+```
+
+使用基础模型加未合并 LoRA 时：
+
+```json5
+"model_name_or_path": "/path/to/base-model",
+"adapter_name_or_path": "./model_output/Qwen3.5-4B-SFT/checkpoint-1500"
+```
+
+测试出合适的 temperature、top_p 值，修改 `settings.jsonc` 的 `infer_args` 后启动：
 ```bash
 weclone-cli webchat-demo
 ```

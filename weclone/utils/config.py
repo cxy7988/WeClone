@@ -110,6 +110,7 @@ def create_config_by_arg_type(arg_type: str, wc_config: WcConfig) -> BaseModel:
         make_dataset_config = wc_config.make_dataset_args.model_dump()
         train_sft_args = wc_config.train_sft_args
         extra_values = {
+            "model_name_or_path": train_sft_args.model_name_or_path,
             "dataset": train_sft_args.dataset,
             "dataset_dir": train_sft_args.dataset_dir,
             "cutoff_len": train_sft_args.cutoff_len,

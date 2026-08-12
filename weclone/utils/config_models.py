@@ -79,8 +79,6 @@ class FinetuningType(StrEnum):
 class CommonArgs(BaseConfigModel):
     """NOTE that all parameters here will be parsed by `HfArgumentParser`. Non-HfArgumentParser parameters should be placed in make_dataset_args."""
 
-    model_name_or_path: str = Field(...)
-    adapter_name_or_path: Optional[str] = Field(None, description="Also as output_dir of train_sft_args")
     template: str = Field(..., description="model template")
     default_system: str = Field(..., description="default system prompt")
     finetuning_type: FinetuningType = Field(FinetuningType.LORA)
@@ -205,12 +203,14 @@ class QuantizationArgs(BaseConfigModel):
 
 
 class TrainSftArgs(BaseConfigModel):
+    model_name_or_path: str = Field(..., description="Base model used as training input")
+    output_dir: str = Field(..., description="Directory where training outputs and adapters are saved")
     stage: str = Field("sft", description="Training stage")
     dataset: str = Field(..., description="Dataset name")
     dataset_dir: str = Field("./dataset/res_csv/sft", description="Dataset directory")
     resume_adapter_name_or_path: Optional[str] = Field(
         None,
-        description="Existing LoRA adapter path to continue SFT from. Output still uses common_args.adapter_name_or_path.",
+        description="Existing LoRA adapter used as training input when continuing SFT",
     )
     freeze_multi_modal_projector: bool = Field(
         False, description="Whether to freeze multimodal projector during MLLM training"
@@ -248,7 +248,6 @@ class TrainSftArgs(BaseConfigModel):
 class TrainPtArgs(TrainSftArgs):
     stage: str = Field("pt", description="Pre-training stage")
     dataset: str = Field(..., description="Pre-training dataset name")
-    output_dir: Optional[str] = Field(None, description="PT output directory")
     packing: Optional[bool] = Field(
         None,
         description="Whether to pack sequences. LlamaFactory enables packing automatically for stage=pt.",
@@ -256,6 +255,10 @@ class TrainPtArgs(TrainSftArgs):
 
 
 class InferArgs(BaseConfigModel):
+    model_name_or_path: str = Field(..., description="Model used as inference input")
+    adapter_name_or_path: Optional[str] = Field(
+        None, description="Optional LoRA adapter used as inference input"
+    )
     infer_backend: Literal["huggingface", "vllm"] = Field(
         "huggingface", description="Backend engine used for inference"
     )
@@ -310,22 +313,14 @@ class WCInferConfig(CommonArgs, InferArgs):
 class WCTrainSftConfig(CommonArgs, TrainSftArgs, CommonMethods):
     """Final configuration model for SFT training"""
 
-    # Training output directory, converted from adapter_name_or_path
-    output_dir: Optional[str] = Field(None)
     dataset: str = Field(..., description="Dataset name")
 
     @model_validator(mode="after")
     def process_config(self):
-        output_adapter_value = getattr(self, "adapter_name_or_path", None)
         resume_adapter_value = getattr(self, "resume_adapter_name_or_path", None)
-
-        if output_adapter_value:
-            self.output_dir = output_adapter_value
 
         if resume_adapter_value:
             self.adapter_name_or_path = resume_adapter_value
-        elif hasattr(self, "adapter_name_or_path"):
-            delattr(self, "adapter_name_or_path")
 
         self.dataset = self._parse_dataset_name()
         if hasattr(self, "resume_adapter_name_or_path"):
@@ -341,17 +336,13 @@ class WCTrainSftConfig(CommonArgs, TrainSftArgs, CommonMethods):
 class WCTrainPtConfig(CommonArgs, TrainPtArgs):
     """Final configuration model for continued pre-training"""
 
-    output_dir: Optional[str] = Field(None)
-
     @model_validator(mode="after")
     def process_config(self):
-        adapter_name_value = getattr(self, "adapter_name_or_path", None)
-
-        if self.output_dir is None and adapter_name_value:
-            self.output_dir = adapter_name_value
-
-        if hasattr(self, "adapter_name_or_path"):
-            delattr(self, "adapter_name_or_path")
+        resume_adapter_value = getattr(self, "resume_adapter_name_or_path", None)
+        if resume_adapter_value:
+            self.adapter_name_or_path = resume_adapter_value
+        if hasattr(self, "resume_adapter_name_or_path"):
+            delattr(self, "resume_adapter_name_or_path")
         if hasattr(self, "quantization"):
             delattr(self, "quantization")
 
@@ -363,6 +354,7 @@ class WCMakeDatasetConfig(CommonArgs, MakeDatasetArgs, CommonMethods):
 
     model_config = {"extra": "allow"}  # Explicitly set to allow
 
+    model_name_or_path: str = Field(..., description="Tokenizer/model used to prepare training data")
     dataset: str = Field(..., description="Dataset name")
     dataset_dir: str = Field("./dataset/res_csv/sft", description="Dataset directory")
     cutoff_len: int = Field(4096, description="Cutoff length")
