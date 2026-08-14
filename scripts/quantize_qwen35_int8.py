@@ -19,8 +19,9 @@ from transformers import (
 )
 
 
-DEFAULT_MODEL = Path("model_output/Qwen3.5-4B-SFT-1500-merged")
-DEFAULT_OUTPUT = Path("model_output/Qwen3.5-4B-SFT-1500-merged-int8")
+DEFAULT_MODEL = Path("model_output/Qwen3.5-4B-SFT-900-merged")
+DEFAULT_OUTPUT = Path("model_output/Qwen3.5-4B-SFT-900-merged-int8")
+DEFAULT_DEVICE = 1
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,7 +33,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL, help="Merged BF16 model directory.")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="New INT8 model directory.")
-    parser.add_argument("--device", type=int, default=0, help="Visible CUDA device index (default: 0).")
+    parser.add_argument(
+        "--device",
+        type=int,
+        default=DEFAULT_DEVICE,
+        help=f"Visible CUDA device index (default: {DEFAULT_DEVICE}).",
+    )
     parser.add_argument(
         "--threshold",
         type=float,
@@ -55,7 +61,7 @@ def require_bitsandbytes() -> str:
         installed = version("bitsandbytes")
     except PackageNotFoundError as error:
         raise RuntimeError(
-            "bitsandbytes is not installed. Run: uv sync --group main"
+            "bitsandbytes is not installed. Run: uv sync"
         ) from error
 
     major_minor = tuple(int(part) for part in installed.split("+")[0].split(".")[:2])
@@ -84,6 +90,7 @@ def quantize(args: argparse.Namespace) -> None:
         raise RuntimeError("CUDA is required for bitsandbytes INT8 quantization")
     if args.device < 0 or args.device >= torch.cuda.device_count():
         raise ValueError(f"Invalid CUDA device {args.device}; found {torch.cuda.device_count()} device(s)")
+    torch.cuda.set_device(args.device)
 
     config = AutoConfig.from_pretrained(
         model_dir, local_files_only=True, trust_remote_code=args.trust_remote_code

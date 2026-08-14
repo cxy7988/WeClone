@@ -183,8 +183,6 @@ dataset/**/*.webp
 dataset/**/*.svg
 dataset/**/*.ico
 
-
-dataset/*telegram*/*
 !*.gitkeep
 WC-exp/*
 
@@ -194,11 +192,11 @@ cache.pkl
 hfd.sh
 rpa_cache.pkl
 settings-bot8006.jsonc
-models_final/*
+models_output/*
 /data/*
 /llamaboard_cache
 eval_Result/*
 .claude/*
 settings.jsonc
 logs/
-settings.jsonc
+.ruff_cache/

@@ -27,7 +27,6 @@ def _make_guided_decoding_params(json_schema: dict, disable_any_whitespace: bool
     return _STRUCTURED_OUTPUTS_PARAMS(json=json_schema, disable_any_whitespace=disable_any_whitespace)  # type: ignore[misc]
 
 
-from weclone.train.transformers_compat import patch_vllm_010_transformers5_tokenizer
 from weclone.utils.config import load_config
 from weclone.utils.config_models import VllmArgs
 from weclone.utils.log import logger
@@ -122,8 +121,6 @@ def vllm_infer(
     """
     if pipeline_parallel_size > get_device_count():
         raise ValueError("Pipeline parallel size should be smaller than the number of gpus.")
-
-    patch_vllm_010_transformers5_tokenizer()
 
     wc_vllm_args = cast(VllmArgs, load_config("vllm"))
     model_args, data_args, _, generating_args = get_infer_args(

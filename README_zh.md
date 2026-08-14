@@ -87,7 +87,7 @@
 git clone https://github.com/xming521/WeClone.git && cd WeClone
 uv venv .venv --python=3.12
 source .venv/bin/activate # windows下执行 .venv\Scripts\activate
-uv pip install --group main -e . # 国内用户使用镜像：-i https://pypi.tuna.tsinghua.edu.cn/simple/ 
+uv sync --frozen
 uv pip install https://github.com/explosion/spacy-models/releases/download/zh_core_web_sm-3.8.0/zh_core_web_sm-3.8.0-py3-none-any.whl
 ```
 
@@ -272,6 +272,72 @@ LLaMA-Factory 使用反向命名的 `disable_gradient_checkpointing` 控制梯�
 
 从头重新训练时不要设置 `resume_from_checkpoint`，并使用一个新的或空的输出目录。
 
+### 导出未量化 Ollama GGUF
+
+完成 LoRA 合并后，可以使用
+[`scripts/convert_safetensors_to_ollama_gguf.sh`](scripts/convert_safetensors_to_ollama_gguf.sh)
+将 Hugging Face Safetensors 模型转换为 Ollama 可用的 F16 GGUF。该脚本使用 Ollama
+的标准 GGUF 转换路径，不传 `--experimental` 或 `--quantize`，因此不会执行 INT4/INT8
+量化。Ollama 将 16 位浮点 GGUF 显示为 `F16`（16 BPW）。
+
+> [!IMPORTANT]
+> 输入目录必须是已经合并基础模型与 LoRA 的完整 Safetensors 模型，不能直接传入只包含
+> adapter 的 checkpoint。运行脚本前还需要先启动 Ollama 服务。
+
+先在一个终端启动 Ollama：
+
+```bash
+ollama serve
+```
+
+另开终端只导出 GGUF 和配套 Modelfile：
+
+```bash
+./scripts/convert_safetensors_to_ollama_gguf.sh \
+  --source model_output/Qwen3.5-4B-SFT-900-merged \
+  --output model_output/Qwen3.5-4B-SFT-900-ollama/qwen3.5-4b-sft-900-f16.gguf
+```
+
+如需在导出后直接注册到 Ollama，再传入 `--model`：
+
+```bash
+./scripts/convert_safetensors_to_ollama_gguf.sh \
+  --source model_output/Qwen3.5-4B-SFT-900-merged \
+  --output model_output/Qwen3.5-4B-SFT-900-ollama/qwen3.5-4b-sft-900-f16.gguf \
+  --model qwen3.5-4b-sft-900
+```
+
+脚本默认拒绝覆盖已有 GGUF、Modelfile 或同名 Ollama 模型。确认需要覆盖时显式添加
+`--force`。转换完成后会得到：
+
+```text
+qwen3.5-4b-sft-900-f16.gguf
+qwen3.5-4b-sft-900-f16.gguf.Modelfile
+```
+
+对于配置中声明了 MTP 层、但 Safetensors 中没有对应 MTP 权重的 Qwen3.5 模型，脚本会
+在临时硬链接目录中自动将 `mtp_num_hidden_layers` 修正为 `0`，不会修改原模型。当前导出
+仅包含语言模型 GGUF，不附带多模态 projector，因此用于文本聊天，不支持图片输入。
+
+将 Ollama 固定到物理 GPU 1 时，可以这样启动服务：
+
+```bash
+CUDA_VISIBLE_DEVICES=1 \
+OLLAMA_VULKAN=false \
+OLLAMA_CONTEXT_LENGTH=4096 \
+OLLAMA_HOST=127.0.0.1:11434 \
+ollama serve
+```
+
+另开终端运行已注册的模型：
+
+```bash
+ollama run qwen3.5-4b-sft-900
+```
+
+服务默认监听 `http://127.0.0.1:11434`。由于 `CUDA_VISIBLE_DEVICES` 会重新编号可见显卡，
+Ollama 日志中的 `CUDA0` 在这里对应物理 GPU 1。
+
 ### 使用浏览器demo简单推理
 推理输入独立放在 `infer_args` 中。使用已合并的完整模型时：
 
@@ -297,6 +363,10 @@ weclone-cli webchat-demo
 ```bash
 weclone-cli server
 ```
+
+当 `infer_backend` 为 `vllm` 时，该命令直接启动当前锁定版本的 vLLM 原生 OpenAI 兼容服务；
+服务地址默认为 `http://127.0.0.1:8005/v1`，对外模型名默认为 `gpt-3.5-turbo`。
+可通过 `API_HOST`、`API_PORT`、`API_MODEL_NAME` 和 `API_KEY` 环境变量覆盖这些设置。
 
 ### 使用常见聊天问题测试
 不包含询问个人信息的问题，仅有日常聊天。测试结果在test_result-my.txt。

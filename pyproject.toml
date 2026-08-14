@@ -18,24 +18,11 @@ dependencies = [
   "loguru>=0.7.3",
   "langchain",
   "openai>=2,<4",
-  "pip"
-]
-
-[tool.weclone]
-# Configuration file version number. This number should be incremented when the configuration file structure or important default values change.
-config_version = "0.3.04"
-
-config_changelog = """
-[0.3.00] - 2025-06-30 - Support TG chat logs, add language parameter, add log level parameter.
-[0.3.02] - 2025-08-15 - Allow the use of the enable_thinking to control offline cleaning..
-[0.3.03] - 2025-11-01 - Add chat member relationship switch.
-[0.3.04] - 2026-08-12 - Separate training input/output paths from inference input paths.
-"""
-
-[dependency-groups]
-main = [
+  "pip",
+  "uvicorn>=0.50.1",
   # Qwen3.5 requires Transformers 5.x. LLaMA-Factory 0.9.5 supports up to 5.6.0.
   "llamafactory==0.9.5",
+  "bitsandbytes>=0.50.0",
   # vLLM 0.27.1's Linux wheel is built against the PyTorch 2.13 / CUDA 12.9 stack.
   "vllm==0.27.1+cu129; platform_system == 'Linux'",
   "torch==2.13.0+cu129; platform_system == 'Linux'",
@@ -52,12 +39,24 @@ main = [
   "flash-attn==2.8.3.post1; platform_system == 'Linux'",
   "flash-linear-attention[cuda]==0.5.2; platform_system == 'Linux'",
   "causal-conv1d==1.6.2.post1; platform_system == 'Linux'",
-  "bitsandbytes>=0.46.1; platform_system == 'Linux' and platform_machine == 'x86_64'",
   "wandb>=0.23.0",
   "triton==3.7.1; platform_system == 'Linux'",
   "presidio_analyzer[transformers]",
   "presidio_anonymizer",
 ]
+
+[tool.weclone]
+# Configuration file version number. This number should be incremented when the configuration file structure or important default values change.
+config_version = "0.3.04"
+
+config_changelog = """
+[0.3.00] - 2025-06-30 - Support TG chat logs, add language parameter, add log level parameter.
+[0.3.02] - 2025-08-15 - Allow the use of the enable_thinking to control offline cleaning..
+[0.3.03] - 2025-11-01 - Add chat member relationship switch.
+[0.3.04] - 2026-08-12 - Separate training input/output paths from inference input paths.
+"""
+
+[dependency-groups]
 sparktts = [
   "einops>=0.8.1",
   "einx>=0.3.0",
@@ -77,11 +76,9 @@ dev = ["pytest", "pytest-order", "pyright", "ruff", "pre-commit"]
 [project.scripts]
 weclone-cli = "weclone.cli:cli"
 
-[project.entry-points."vllm.general_plugins"]
-weclone-transformers-compat = "weclone.train.transformers_compat:patch_vllm_010_transformers5_tokenizer"
-
 [tool.uv]
 package = true
+default-groups = []
 no-build-isolation-package = ["causal-conv1d", "flash-attn"]
 
 [tool.uv.pip]
