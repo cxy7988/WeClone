@@ -203,3 +203,4 @@ dataset/benchmark/*
 settings.jsonc
 logs/
 .ruff_cache/
+tests/
