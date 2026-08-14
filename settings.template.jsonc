@@ -1,5 +1,5 @@
 {
-    "version": "0.3.04",
+    "version": "0.3.05",
     "common_args": {
         "template": "qwen",
         "default_system": "请你扮演一名人类，不要说自己是人工智能",
@@ -103,5 +103,40 @@
     },
     "test_model_args": {
         "test_data_path": "dataset/eval/test_data-zh.json"
+    },
+    "benchmark_args": {
+        // 每次只评测一个手动指定的生成模型；修改 run_name/model 后可分别运行多个版本进行对比
+        "data_path": "dataset/benchmark/benchmark.sample.json",
+        "output_dir": "benchmark_results",
+        "run_name": "qwen-lora-checkpoint-1500",
+        // 本地模式可在这里配置，或运行时使用 --model-path/--adapter-path；null 表示使用下面的 candidate API
+        "local_model_path": null,
+        "local_adapter_path": null,
+        "candidate": {
+            "base_url": "http://127.0.0.1:8005/v1",
+            "api_key": "sk-test",
+            "model": "gpt-3.5-turbo",
+            "timeout": 120,
+            "max_retries": 2,
+            "retry_delay": 1
+        },
+        "judge": {
+            "base_url": "https://your-judge-api.example.com/v1",
+            "api_key": "${oc.env:JUDGE_API_KEY,}",
+            "model": "your-judge-model",
+            "timeout": 120,
+            "max_retries": 2,
+            "retry_delay": 1,
+            "temperature": 0,
+            "max_tokens": 1200,
+            "json_response_format": true
+        },
+        "generation_temperature": 0.2,
+        "generation_top_p": 0.9,
+        "generation_max_tokens": 256,
+        "judge_repetitions": 1,
+        "max_workers": 4,
+        "max_samples": null,
+        "seed": 42
     }
 }

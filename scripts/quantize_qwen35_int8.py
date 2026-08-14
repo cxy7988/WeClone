@@ -12,6 +12,7 @@ from pathlib import Path
 import torch
 from transformers import (
     AutoConfig,
+    AutoModelForCausalLM,
     AutoModelForImageTextToText,
     AutoProcessor,
     AutoTokenizer,
@@ -95,8 +96,11 @@ def quantize(args: argparse.Namespace) -> None:
     config = AutoConfig.from_pretrained(
         model_dir, local_files_only=True, trust_remote_code=args.trust_remote_code
     )
-    if config.model_type != "qwen3_5":
-        raise ValueError(f"Expected model_type='qwen3_5', found {config.model_type!r}")
+    if config.model_type not in {"qwen3_5", "qwen3_5_text"}:
+        raise ValueError(
+            "Expected model_type='qwen3_5' or 'qwen3_5_text', "
+            f"found {config.model_type!r}"
+        )
 
     quantization_config = BitsAndBytesConfig(
         load_in_8bit=True,
@@ -112,7 +116,12 @@ def quantize(args: argparse.Namespace) -> None:
     print(f"bitsandbytes: {bnb_version}; threshold: {args.threshold}")
 
     try:
-        model = AutoModelForImageTextToText.from_pretrained(
+        model_loader = (
+            AutoModelForCausalLM
+            if config.model_type == "qwen3_5_text"
+            else AutoModelForImageTextToText
+        )
+        model = model_loader.from_pretrained(
             model_dir,
             quantization_config=quantization_config,
             device_map={"": args.device},
@@ -128,10 +137,11 @@ def quantize(args: argparse.Namespace) -> None:
             model_dir, local_files_only=True, trust_remote_code=args.trust_remote_code
         )
         tokenizer.save_pretrained(output_dir)
-        processor = AutoProcessor.from_pretrained(
-            model_dir, local_files_only=True, trust_remote_code=args.trust_remote_code
-        )
-        processor.save_pretrained(output_dir)
+        if config.model_type == "qwen3_5":
+            processor = AutoProcessor.from_pretrained(
+                model_dir, local_files_only=True, trust_remote_code=args.trust_remote_code
+            )
+            processor.save_pretrained(output_dir)
 
         source_modelfile = model_dir / "Modelfile"
         if source_modelfile.is_file():
@@ -143,6 +153,7 @@ def quantize(args: argparse.Namespace) -> None:
         metadata = {
             "source_model": str(model_dir),
             "format": "bitsandbytes_llm_int8",
+            "model_type": config.model_type,
             "bitsandbytes_version": bnb_version,
             "transformers_version": version("transformers"),
             "torch_version": torch.__version__,

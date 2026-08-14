@@ -156,6 +156,41 @@ def test_model():
     test_main()
 
 
+@cli.command("benchmark-model", help="Evaluate one selected model with a Judge LLM.")
+@click.option("--model", "candidate_model", default=None, help="Override benchmark_args.candidate.model.")
+@click.option(
+    "--model-path",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Load a local base or merged model directly instead of calling a candidate API.",
+)
+@click.option(
+    "--adapter-path",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Optional local LoRA adapter; requires a local model path.",
+)
+@click.option(
+    "--local-backend",
+    type=click.Choice(["vllm", "huggingface"]),
+    default=None,
+    help="Override infer_args.infer_backend for local model loading.",
+)
+@click.option("--run-name", default=None, help="Override benchmark_args.run_name for this result.")
+@apply_common_decorators()
+def benchmark_model(candidate_model, model_path, adapter_path, local_backend, run_name):
+    """Run the held-out, Judge-LLM-only benchmark for one configured model."""
+    from weclone.eval.benchmark_model import main as benchmark_main
+
+    benchmark_main(
+        candidate_model=candidate_model,
+        model_path=model_path,
+        adapter_path=adapter_path,
+        local_backend=local_backend,
+        run_name=run_name,
+    )
+
+
 @cli.command("server", help="Start API service providing model inference interface.")
 @apply_common_decorators()
 def server():

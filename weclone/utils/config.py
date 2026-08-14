@@ -82,6 +82,24 @@ def create_config_by_arg_type(arg_type: str, wc_config: WcConfig) -> BaseModel:
     elif arg_type == "test_model":
         return wc_config.test_model_args
 
+    elif arg_type == "benchmark":
+        if wc_config.benchmark_args is None:
+            raise ValueError(
+                "Missing `benchmark_args` in the configuration file. "
+                "Copy the example from settings.template.jsonc."
+            )
+
+        from .config_models import WCBenchmarkConfig
+
+        config_dict = {
+            **common_config,
+            **wc_config.benchmark_args.model_dump(),
+            "local_infer_backend": wc_config.infer_args.infer_backend,
+            "local_repetition_penalty": wc_config.infer_args.repetition_penalty,
+            "local_vllm_config": wc_config.vllm_args.model_dump(exclude_none=True),
+        }
+        return WCBenchmarkConfig(**config_dict)
+
     elif arg_type == "train_sft":
         common_config["include_type"] = wc_config.make_dataset_args.include_type
 
@@ -136,7 +154,10 @@ def load_config(arg_type: str) -> BaseModel:
 
     config_pydantic = create_config_by_arg_type(arg_type, wc_config)
 
-    process_config_dict_and_argv(arg_type, config_pydantic)
+    # The benchmark calls OpenAI-compatible APIs directly and does not use
+    # HfArgumentParser. Avoid copying endpoint API keys into the process argv.
+    if arg_type != "benchmark":
+        process_config_dict_and_argv(arg_type, config_pydantic)
 
     return config_pydantic
 

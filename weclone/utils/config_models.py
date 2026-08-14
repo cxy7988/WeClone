@@ -282,6 +282,50 @@ class TestModelArgs(BaseConfigModel):
     test_data_path: str = Field(default="dataset/eval/test_data-en.json", description="Test data path")
 
 
+class BenchmarkEndpointConfig(BaseConfigModel):
+    """OpenAI-compatible endpoint used by the benchmark."""
+
+    model_config = {"extra": "forbid"}
+
+    base_url: str = Field(..., description="OpenAI-compatible API base URL")
+    api_key: str = Field("sk-test", description="API key for the endpoint")
+    model: str = Field(..., description="Model name exposed by the endpoint")
+    timeout: float = Field(120.0, gt=0, description="Request timeout in seconds")
+    max_retries: int = Field(2, ge=0, description="Additional retries after a failed request")
+    retry_delay: float = Field(1.0, ge=0, description="Delay between retries in seconds")
+
+
+class BenchmarkJudgeConfig(BenchmarkEndpointConfig):
+    temperature: float = Field(0.0, ge=0, le=2)
+    max_tokens: int = Field(1200, gt=0)
+    json_response_format: bool = Field(
+        True, description="Request OpenAI JSON response mode from the judge endpoint"
+    )
+
+
+class BenchmarkArgs(BaseConfigModel):
+    """Configuration for the Judge-LLM-only single-model benchmark."""
+
+    model_config = {"extra": "forbid"}
+
+    data_path: str = Field(
+        "dataset/benchmark/benchmark.sample.json", description="Held-out benchmark dataset"
+    )
+    output_dir: str = Field("benchmark_results", description="Benchmark result root directory")
+    run_name: str = Field("candidate", min_length=1, description="Label for the model being evaluated")
+    candidate: Optional[BenchmarkEndpointConfig] = None
+    local_model_path: Optional[str] = Field(None, description="Optional local base or merged model path")
+    local_adapter_path: Optional[str] = Field(None, description="Optional local LoRA adapter path")
+    judge: BenchmarkJudgeConfig
+    generation_temperature: float = Field(0.2, ge=0, le=2)
+    generation_top_p: float = Field(0.9, gt=0, le=1)
+    generation_max_tokens: int = Field(256, gt=0)
+    judge_repetitions: int = Field(1, ge=1, le=5)
+    max_workers: int = Field(4, ge=1, le=32)
+    max_samples: Optional[int] = Field(None, gt=0)
+    seed: int = Field(42)
+
+
 class CommonMethods:
     def _parse_dataset_name(self) -> str:
         """Parse and process dataset name"""
@@ -302,12 +346,21 @@ class WcConfig(BaseModel):
     infer_args: InferArgs = Field(..., description="Inference parameters")
     vllm_args: VllmArgs = Field(VllmArgs())
     test_model_args: TestModelArgs = Field(TestModelArgs())
+    benchmark_args: Optional[BenchmarkArgs] = None
 
 
 class WCInferConfig(CommonArgs, InferArgs):
     """Final configuration model for Web Demo / API Service (based on LLaMA-Factory ChatModel)"""
 
     pass
+
+
+class WCBenchmarkConfig(CommonArgs, BenchmarkArgs):
+    """Final configuration for evaluating one explicitly selected model."""
+
+    local_infer_backend: Literal["huggingface", "vllm"] = "vllm"
+    local_repetition_penalty: float = Field(1.2, gt=0)
+    local_vllm_config: dict[str, object] = Field(default_factory=dict)
 
 
 class WCTrainSftConfig(CommonArgs, TrainSftArgs, CommonMethods):

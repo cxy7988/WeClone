@@ -272,6 +272,23 @@ LLaMA-Factory 使用反向命名的 `disable_gradient_checkpointing` 控制梯�
 
 从头重新训练时不要设置 `resume_from_checkpoint`，并使用一个新的或空的输出目录。
 
+### 合并为纯文本 Qwen3.5 模型
+
+Qwen3.5 的基础 checkpoint 带有视觉编码器。仅做文本聊天时，可以在合并 LoRA 时直接导出
+`qwen3_5_text` 模型，输出不包含视觉塔，也不会在 Transformers/vLLM 加载时实例化视觉模块：
+
+```bash
+.venv/bin/python scripts/merge_qwen35_text_lora.py \
+  --base-model /home/hdd/2/cxy/FujiLLM_finetuning/models/Qwen3.5-4B \
+  --adapter model_output/Qwen3.5-4B-SFT/checkpoint-900 \
+  --output-dir model_output/Qwen3.5-4B-SFT-900-merged-text
+```
+
+脚本默认使用 `--device-map cpu`，合并过程不占用显存；如需让 Transformers 自动使用
+GPU/CPU，可显式传 `--device-map auto`。它会先确认 adapter 中只有语言模型 LoRA 权重，随后
+把多模态权重路径转换为原生 `Qwen3_5ForCausalLM` 路径。输出只支持文本输入，不能再处理图片
+或视频。后续 INT8 量化脚本同时支持这种 `qwen3_5_text` 输出。
+
 ### 导出未量化 Ollama GGUF
 
 完成 LoRA 合并后，可以使用
@@ -374,6 +391,97 @@ weclone-cli server
 weclone-cli server
 weclone-cli test-model
 ```
+
+### 使用 Judge LLM 运行验证 benchmark
+
+`benchmark-model` 每次只评测一个手动指定的生成模型，不自动进行 Base/LoRA
+成对生成或 A/B 对比。生成模型和 Judge 都通过 OpenAI-compatible API 调用，所有质量判断均由
+Judge LLM 完成，程序只负责校验数据、生成回复以及汇总 Judge 返回的分数。
+
+先在 `settings.jsonc` 中配置 `benchmark_args`。完整配置示例见
+[`settings.template.jsonc`](settings.template.jsonc)，其中关键字段如下：
+
+```json5
+"benchmark_args": {
+    "data_path": "dataset/benchmark/benchmark.sample.json",
+    "output_dir": "benchmark_results",
+    "run_name": "qwen-lora-checkpoint-1500",
+    "candidate": {
+        "base_url": "http://127.0.0.1:8005/v1",
+        "api_key": "sk-test",
+        "model": "gpt-3.5-turbo"
+    },
+    "judge": {
+        "base_url": "https://your-judge-api.example.com/v1",
+        "api_key": "${oc.env:JUDGE_API_KEY,}",
+        "model": "your-judge-model"
+    },
+    "judge_repetitions": 1,
+    "max_workers": 4
+}
+```
+
+通过 API 评测时，先启动待测模型的服务，然后运行：
+
+```bash
+weclone-cli server
+JUDGE_API_KEY=your-key weclone-cli benchmark-model
+```
+
+也可以直接传入本地模型目录，不需要先启动待测模型 API。评测合并后的完整模型：
+
+```bash
+JUDGE_API_KEY=your-key weclone-cli benchmark-model \
+  --model-path ./model_output/Qwen3.5-4B-SFT-1500-merged \
+  --run-name merged-1500
+```
+
+评测未合并的 LoRA 时，`--model-path` 填基础模型目录，`--adapter-path` 填 LoRA checkpoint：
+
+```bash
+JUDGE_API_KEY=your-key weclone-cli benchmark-model \
+  --model-path ./models/Qwen3.5-4B \
+  --adapter-path ./model_output/Qwen3.5-4B-SFT/checkpoint-1500 \
+  --run-name lora-checkpoint-1500
+```
+
+本地模型只会加载一次。默认沿用 `infer_args.infer_backend`，也可以通过
+`--local-backend vllm` 或 `--local-backend huggingface` 临时覆盖；vLLM 模式同时沿用
+`vllm_args`。`--model-path` 和 API 模式的 `--model` 不能同时使用。也可以把本地路径固定写入
+`benchmark_args.local_model_path` 和 `benchmark_args.local_adapter_path`。使用本地模式时
+`benchmark_args.candidate` 会被忽略，也可以从配置中删除；Judge 配置仍然必须保留。
+
+使用 API 模式时，可以在每次运行中直接覆盖待测 API 模型名和结果标签，而不修改配置文件：
+
+```bash
+JUDGE_API_KEY=your-key weclone-cli benchmark-model \
+  --model gpt-3.5-turbo \
+  --run-name qwen-lora-checkpoint-1500
+```
+
+`--run-name` 只是本次评测的结果标签，用于区分输出目录和报告，不会传给生成模型，也不会
+影响 Judge 评分。例如可以使用 `qwen-base`、`lora-checkpoint-500`、
+`lora-checkpoint-1500` 或 `merged-int8`。如果不传该参数，则使用
+`settings.jsonc` 中的 `benchmark_args.run_name`。对应的输出目录类似：
+
+```text
+benchmark_results/20260814T131500Z-qwen-lora-checkpoint-1500/
+```
+
+示例验证集位于
+[`dataset/benchmark/benchmark.sample.json`](dataset/benchmark/benchmark.sample.json)。数据格式中：
+
+- `assistant` 表示被模仿的本人，`user` 表示聊天对象；
+- 每段 `messages` 必须以 `user` 结尾；
+- `reference` 是本人未参与训练的真实下一条回复；
+- `style_examples` 只用于向 Judge 展示整体风格，不能与 `samples` 重复；
+- 新聊天应按完整会话或日期留出，不要把 benchmark 数据重新加入训练或调参。
+
+每次运行会在 `benchmark_results/<时间>-<run_name>/` 下产生 `samples.jsonl`、
+`summary.json` 和 `report.md`。评测另一个模型时修改（或通过命令行覆盖）`run_name` 和 `candidate.model`
+（必要时也修改接口地址）后再次运行。只有数据集 SHA-256、Judge 模型、Judge 重复次数和生成参数
+一致时，两份报告才适合直接比较。聊天内容会发送到所配置的 Judge API，敏感数据请使用可信的
+本地 Judge 或先进行脱敏。
 
 ## 🖼️ 微调效果
 > [!TIP] 

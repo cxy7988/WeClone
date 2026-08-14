@@ -196,6 +196,9 @@ models_output/*
 /data/*
 /llamaboard_cache
 eval_Result/*
+benchmark_results/
+dataset/benchmark/*
+!dataset/benchmark/benchmark.sample.json
 .claude/*
 settings.jsonc
 logs/
