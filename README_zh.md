@@ -1,68 +1,9 @@
-![download](https://github.com/user-attachments/assets/cd4a87c6-1649-4ce5-bce8-bd5b08b278de)
-<h3 align="center">🚀 One-stop solution for creating your digital avatar from chat history 💡</h3>  
-<h3 align="center">🚀从聊天记录创造数字分身的一站式解决方案💡</h3>  
-
-
-<div align="center">
-
-[![GitHub stars](https://img.shields.io/github/stars/xming521/WeClone?style=for-the-badge&logo=github&label=Stars&logoColor=white&color=ffda65)](https://github.com/xming521/WeClone/stargazers)
-[![GitHub release](https://img.shields.io/github/v/release/xming521/WeClone?style=for-the-badge&logo=github&label=Release&logoColor=white&color=06d094)](https://github.com/xming521/WeClone/releases)
-<a href="https://qm.qq.com/cgi-bin/qm/qr?k=wNdgbOVT6oFOJ2wlMLsolUXErW9ESLpk&jump_from=webapi&authKey=z/reOp6YLyvR4Tl2k2nYMsLoMC3w9/99ucgKMX0oRGlxDV/WbYnvq2QxODoIkfxn" target="_blank" style="text-decoration: none;">
-  <img src="https://img.shields.io/badge/QQ群-708067078-12B7F5?style=for-the-badge&logo=qq&logoColor=white" alt="WeClone①" title="WeClone①">
-</a>
-[![小红书](https://img.shields.io/badge/WeClone-FE2C55?style=for-the-badge&logo=xiaohongshu&logoColor=white)](https://www.xiaohongshu.com/user/profile/628109730000000021029de4)
-[![Twitter](https://img.shields.io/badge/Twitter-@weclone567-000000?style=for-the-badge&logo=x&logoColor=white)](https://x.com/weclone567)
-[![Telegram](https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/+JEdak4m0XEQ3NGNl)
-
-<a href="https://hellogithub.com/repository/12ab209b56cb4cfd885c8cfd4cfdd53e" target="_blank"><img src="https://abroad.hellogithub.com/v1/widgets/recommend.svg?rid=12ab209b56cb4cfd885c8cfd4cfdd53e&claim_uid=RThlPDoGrFvdMY5" alt="Featured｜HelloGitHub" style="width: 150px; height: 28px;" /></a>
-<a href="https://trendshift.io/repositories/13759" target="_blank"><img src="https://trendshift.io/api/badge/repositories/13759" alt="xming521%2FWeClone | Trendshift" style="width: 220px; height: 50px;" /></a>
-<a href="https://deepwiki.com/xming521/WeClone"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"  style="width: 134px; height: 23px;margin-bottom: 3px;"></a>
-</div>
-
-<p align="center">
-简体中文｜
-  <a href="https://github.com/xming521/WeClone/blob/master/README.md" target="_blank">English</a>｜
-  <a href="https://www.weclone.love/" target="_blank"> 项目主页 </a> ｜
-  <a href="https://docs.weclone.love/docs/introduce/what-is-weclone.html" target="_blank"> 项目文档 </a>
-  
-</p>
-
-
-## ✨核心功能
-- 💫 涵盖打造数字分身的全链路方案，包括聊天数据导出、预处理、模型训练、部署
-- 💬 使用聊天记录微调LLM，支持图片模态数据，让大模型有"那味儿"
-- 🔗 绑定到Discord, Telegram, Slack, Feishu等，实现自己的数字分身
-- 🛡️ 隐私信息过滤，本地化微调部署，数据安全可控
-
-## 📋特性与说明
-
-### 数据源平台适配
-
-| 平台 | 文字 | 图片 | 语音 | 视频 | 动画表情 | 链接(分享) | 引用 | 转发 | 位置 | 文件 |
-|------|------|------|------|------|----------|-----------|------|------|------|------|
-| Telegram | ✅ | ✅ | ❌ | ❌ | ⚠️转为Emjoy | ❌ | ❌ | ✅ | ✅ | ❌ |
-| WhatsApp | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 |
-| Discord | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 |
-| Slack | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 |
-
-### 部署平台支持
-| 平台 | 部署支持 |
-|------|------|
-| 个人微信 |✅ (基于 **openclaw-weixin**)|
-| Telegram | ✅ | 
-| WhatsApp | 🚧 | 
-| Discord | ✅ | 
-| Slack | ✅ | 
-
 > [!IMPORTANT]
 > - WeClone仍在快速迭代期，当前效果不代表最终效果。  
 > - 微调LLM效果很大程度取决于模型大小、聊天数据的数量和质量，理论上模型越大，数据越多，效果越好。
 > - 7B模型效果一般，14B及以上的模型效果会更好。   
 > - Windows环境未进行严格测试，可以使用WSL作为运行环境。
 
-### 近期更新
-[25/06/05]支持图片模态数据微调   
-[25/07/10]数据源增加Telegram
 
 ### 硬件要求
 
@@ -431,19 +372,12 @@ JUDGE_API_KEY=your-key weclone-cli benchmark-model
 也可以直接传入本地模型目录，不需要先启动待测模型 API。评测合并后的完整模型：
 
 ```bash
+CUDA_VISIBLE_DEVICES=1 \
 JUDGE_API_KEY=your-key weclone-cli benchmark-model \
-  --model-path ./model_output/Qwen3.5-4B-SFT-1500-merged \
-  --run-name merged-1500
+  --model-path model_output/Qwen3-14B-checkpoint-800-merged-fp8 \
+  --run-name 14b
 ```
 
-评测未合并的 LoRA 时，`--model-path` 填基础模型目录，`--adapter-path` 填 LoRA checkpoint：
-
-```bash
-JUDGE_API_KEY=your-key weclone-cli benchmark-model \
-  --model-path ./models/Qwen3.5-4B \
-  --adapter-path ./model_output/Qwen3.5-4B-SFT/checkpoint-1500 \
-  --run-name lora-checkpoint-1500
-```
 
 本地模型只会加载一次。默认沿用 `infer_args.infer_backend`，也可以通过
 `--local-backend vllm` 或 `--local-backend huggingface` 临时覆盖；vLLM 模式同时沿用
@@ -451,193 +385,8 @@ JUDGE_API_KEY=your-key weclone-cli benchmark-model \
 `benchmark_args.local_model_path` 和 `benchmark_args.local_adapter_path`。使用本地模式时
 `benchmark_args.candidate` 会被忽略，也可以从配置中删除；Judge 配置仍然必须保留。
 
-使用 API 模式时，可以在每次运行中直接覆盖待测 API 模型名和结果标签，而不修改配置文件：
-
-```bash
-JUDGE_API_KEY=your-key weclone-cli benchmark-model \
-  --model gpt-3.5-turbo \
-  --run-name qwen-lora-checkpoint-1500
-```
-
-`--run-name` 只是本次评测的结果标签，用于区分输出目录和报告，不会传给生成模型，也不会
-影响 Judge 评分。例如可以使用 `qwen-base`、`lora-checkpoint-500`、
-`lora-checkpoint-1500` 或 `merged-int8`。如果不传该参数，则使用
-`settings.jsonc` 中的 `benchmark_args.run_name`。对应的输出目录类似：
-
-```text
-benchmark_results/20260814T131500Z-qwen-lora-checkpoint-1500/
-```
-
-示例验证集位于
-[`dataset/benchmark/benchmark.sample.json`](dataset/benchmark/benchmark.sample.json)。数据格式中：
-
-- `assistant` 表示被模仿的本人，`user` 表示聊天对象；
-- 每段 `messages` 必须以 `user` 结尾；
-- `reference` 是本人未参与训练的真实下一条回复；
-- `style_examples` 只用于向 Judge 展示整体风格，不能与 `samples` 重复；
-- 新聊天应按完整会话或日期留出，不要把 benchmark 数据重新加入训练或调参。
-
-每次运行会在 `benchmark_results/<时间>-<run_name>/` 下产生 `samples.jsonl`、
-`summary.json` 和 `report.md`。评测另一个模型时修改（或通过命令行覆盖）`run_name` 和 `candidate.model`
-（必要时也修改接口地址）后再次运行。只有数据集 SHA-256、Judge 模型、Judge 重复次数和生成参数
-一致时，两份报告才适合直接比较。聊天内容会发送到所配置的 Judge API，敏感数据请使用可信的
-本地 Judge 或先进行脱敏。
-
-## 🖼️ 微调效果
-> [!TIP] 
-> **社群内有部署好的Qwen2.5VL 32B Bot，可以体验效果。** 
-
-
-## 🤖 部署到聊天机器人
-
-### AstrBot
-
-[AstrBot](https://github.com/AstrBotDevs/AstrBot) 是易上手的多平台 LLM 聊天机器人及开发框架 ✨ 平台支持Telegram、飞书等。      
-
-使用步骤：
-1. 部署 AstrBot
-2. 在 AstrBot 中部署消息平台
-3. 执行 `weclone-cli server` 启动api服务
-4. 在 AstrBot 中新增服务提供商，类型选择OpenAI，API Base URL 根据AstrBot部署方式填写（例如docker部署可能为http://172.17.0.1:8005/v1） ，模型填写gpt-3.5-turbo,API Key随意填写一个
-5. 微调后不支持工具调用，请先关掉默认的工具，消息平台发送指令： `/tool off_all`，否则会没有微调后的效果。 
-6. 根据微调时使用的default_system，在 AstrBot 中设置系统提示词。
-![5](https://github.com/user-attachments/assets/19de7072-076a-4cdf-8ae6-46b9b89f536a)
-> [!IMPORTANT]
-> 检查api_service的日志，尽量保证大模型服务请求的参数和微调时一致，tool插件能力都关掉。
-
-### LangBot
-
-[LangBot](https://github.com/RockChinQ/LangBot) 是一个开源的接入全球多种即时通信平台的 LLM 机器人平台，适合各种场景使用。
-
-<img width="450px" alt="image" src="https://github.com/user-attachments/assets/04ceeacf-8a14-40a9-b07a-2f03f257eee6" />
-
-
-1. [部署 LangBot](https://github.com/RockChinQ/LangBot#-%E5%BC%80%E5%A7%8B%E4%BD%BF%E7%94%A8)
-2. 执行 `weclone-cli server` 启动 WeClone API 服务
-3. 在 LangBot 中添加一个机器人
-4. 在模型页添加新模型，名称`gpt-3.5-turbo`，供应商选择 OpenAI，填写 请求 URL 为 WeClone 的地址，详细连接方式可以参考[文档](https://docs.langbot.app/zh/workshop/network-details.html)，API Key 任意填写。
-
-<img width="400px" alt="image" src="https://github.com/user-attachments/assets/fc167dea-7c93-4d94-9c5f-db709d0320ba" />
-
-6. 在流水线配置中选择刚才添加的模型，或修改提示词配置
-
-<img width="400px" alt="image" src="https://github.com/user-attachments/assets/dbb0fd0a-f760-42db-acd0-bb99c859b52e" />
-
-## 📌 路线图
-- [ ] 支持更多数据源
-- [ ] 更丰富的上下文：包括上下文对话、聊天对象信息、时间等 
-- [ ] Memory 支持
-- [ ] 支持多模态:已支持图片
-- [ ] 数据增强
-- [ ] 支持GUI
-- [ ] 支持COT思考
-
-
-## 问题解决
-#### [官方文档FAQ](https://docs.weclone.love/docs/introduce/FAQ.html)    
-同时建议使用[DeepWiki](https://deepwiki.com/xming521/WeClone)解决问题。
-
-## ❤️ 贡献代码
-
-欢迎任何 Issues/Pull Requests！
-
-你可以通过查看Issues或帮助审核 PR（拉取请求）来贡献。对于新功能的添加，请先通过 Issue 讨论。   
-开发环境：
-```bash
-uv pip install --group dev -e .
-pre-commit install
-```
-
-项目使用`pytest`测试，`pyright`检查类型，`ruff`检查代码格式。  
-提交代码前你应该先运行`pytest tests`确保所有测试通过。
-
-## 🙏 致谢
-BUPT VCIS Lab的支持
-感谢以下代码贡献者和社区里其他成员的贡献
-
-<a href="https://github.com/xming521/WeClone/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=xming521/WeClone" />
-</a>
-
-同时本项目受益于[LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory)、[AstrBot](https://github.com/AstrBotDevs/AstrBot)、[LangBot](https://github.com/RockChinQ/LangBot)等优秀开源项目。
-
-## ⚠️ 免责声明
-> [!CAUTION]
-> **本项目仅供学习、研究和实验用途，用于生产环境存在较大风险，请谨慎评估。请勿用于非法用途，后果自负。**   
-> [针对违规获取及利用微信终端用户数据行为的打击公告](https://mp.weixin.qq.com/s/A6h4ZLTE2EPrY7kJ5fHE2g)
-
-
-> [!IMPORTANT]
-> #### WeClone 目前未与任何平台合作，未发行任何数字货币。唯一官方网站：[weclone.love](https://www.weclone.love)，谨防仿冒。
-<details>
-<summary>点击查看免责条款</summary>
-
-### 1. 使用风险自担
-- 用户在使用本项目时，应充分理解并承担所有相关风险
-- **本项目作者不对因使用本项目而产生的任何直接或间接损失承担责任**
-- 包括但不限于：数据丢失、经济损失、法律纠纷、个人名誉损害、社会关系影响、心理创伤、职业发展受阻、商业信誉受损等
-
-### 2. 生产环境风险警告
-- **用于商业用途或对外提供服务需自行承担全部风险**
-- 生产环境使用可能导致的所有后果（包括但不限于服务中断、数据安全问题、用户投诉、法律责任等）完全由用户承担
-- **建议在生产环境使用前进行充分的测试、验证和风险评估**
-
-### 3. 模型输出不可靠性
-- 微调后的模型可能产生不准确、有害或误导性的内容
-- 模型输出不代表真实人物的观点或意图
-- 用户应对模型输出进行人工审核和验证
-
-### 4. 数据安全与隐私
-- 用户应确保上传的聊天记录等数据符合相关法律法规
-- 用户应获得**数据相关人员的适当授权**
-- 本项目不对**数据泄露或隐私侵犯**承担责任
-
-### 5. 法律合规
-- **用户应确保使用本项目符合当地法律法规**
-- 涉及人工智能、数据保护、知识产权等相关法律
-- **违法使用造成的后果由用户承担**
-
-### 6. 技术支持限制
-- 本项目按"现状"提供，不提供任何明示或暗示的保证
-- 作者不承诺提供持续的技术支持或维护
-- 不保证项目的稳定性、可靠性或适用性
-
-## 使用建议
-
-### 强制性Bot身份标识
-**使用本项目生成的数字分身时，强烈建议：**
-- 在每次对话开始时明确标识为"AI Bot"或"数字分身"
-- 在用户界面显著位置标注"此为AI生成内容"
-- 避免让用户误认为是真实人类在对话，从而造成风险
-
-### 风险评估建议
-
-如确需在生产环境使用，建议：
-1. 进行全面的安全性测试
-2. 建立完善的内容审核机制
-3. 制定应急响应预案
-4. 购买相应的保险保障
-5. 咨询法律专业人士意见
-
-
-本免责声明可能随项目更新而修订，用户应定期查看最新版本。继续使用本项目即表示同意最新的免责声明条款。
-
-**一旦您下载、克隆、修改、分发或以任何方式使用本项目的代码或模型，即表示您已完整阅读、理解并同意无条件接受本免责声明的全部条款。**
-
-</details>
-
-**请用户慎重阅读并理解本免责声明的所有内容，确保在使用本项目时严格遵守相关规定。**
-<br>  
-
-## ⭐ Star History
-> [!TIP] 
-> 如果本项目对您有帮助，或者您关注本项目的未来发展，请给项目 Star，谢谢 
-
-<div align="center">
-
-[![Star History Chart](https://api.star-history.com/svg?repos=xming521/WeClone&type=Date)](https://www.star-history.com/#xming521/WeClone&Date)
-
-</div>
-
-
-<div align="center"> 克隆我们，保留灵魂的芬芳 </div>
+本地 `vllm` benchmark 会直接调用项目锁定的 vLLM 0.27.1，不经过 LLaMA-Factory 的
+`ChatModel` vLLM 包装层。LLaMA-Factory 0.9.5 的包装层只接受 vLLM ≤0.11，直接调用可以避免
+错误的版本限制，同时与 `weclone-cli server` 使用的运行时保持一致。`huggingface` 后端仍使用
+LLaMA-Factory `ChatModel`。加载 vLLM 前还会优先使用项目内的 FlashAttention 兼容 shim，避免环境中
+单独安装的 `flash_attn` 与当前 PyTorch/CUDA ABI 不一致而导致引擎进程在导入阶段退出。

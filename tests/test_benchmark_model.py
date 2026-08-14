@@ -178,6 +178,115 @@ def test_local_candidate_loads_model_once_and_supports_adapter(tmp_path) -> None
     assert captured["kwargs"]["max_new_tokens"] == 64
 
 
+def test_local_vllm_candidate_bypasses_llamafactory_chat_model(tmp_path) -> None:
+    model_path = tmp_path / "merged-model"
+    model_path.mkdir()
+    (model_path / "config.json").write_text("{}", encoding="utf-8")
+    captured = {}
+
+    class FakeVllm:
+        def __init__(self, **kwargs):
+            captured["engine_args"] = kwargs
+
+        def chat(self, messages, **kwargs):
+            captured["messages"] = messages
+            captured["chat_kwargs"] = kwargs
+            return [SimpleNamespace(outputs=[SimpleNamespace(text="vLLM 本地回复")])]
+
+    def fake_sampling_params(**kwargs):
+        captured["sampling_params"] = kwargs
+        return kwargs
+
+    config = make_config(
+        local_model_path=str(model_path),
+        local_adapter_path=None,
+        local_infer_backend="vllm",
+        local_vllm_config={"gpu_memory_utilization": 0.8},
+    )
+    client = LocalChatCompletionClient(
+        config,
+        vllm_factory=FakeVllm,
+        sampling_params_factory=fake_sampling_params,
+    )
+
+    response = client.complete(
+        [
+            {"role": "system", "content": "system prompt"},
+            {"role": "user", "content": "hello"},
+        ],
+        temperature=0.5,
+        top_p=0.65,
+        max_tokens=128,
+        seed=42,
+    )
+
+    assert response == "vLLM 本地回复"
+    assert captured["engine_args"]["model"] == str(model_path.resolve())
+    assert captured["engine_args"]["gpu_memory_utilization"] == 0.8
+    assert captured["engine_args"]["enable_lora"] is False
+    assert captured["sampling_params"]["temperature"] == 0.5
+    assert captured["sampling_params"]["top_p"] == 0.65
+    assert captured["chat_kwargs"]["use_tqdm"] is False
+    assert captured["messages"][0] == {"role": "system", "content": "system prompt"}
+
+
+def test_local_vllm_remaps_qwen35_language_model_prefix_without_copying_weights(tmp_path) -> None:
+    model_path = tmp_path / "merged-text"
+    model_path.mkdir()
+    (model_path / "config.json").write_text(
+        json.dumps(
+            {
+                "model_type": "qwen3_5_text",
+                "architectures": ["Qwen3_5ForCausalLM"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (model_path / "model.safetensors.index.json").write_text(
+        json.dumps(
+            {
+                "weight_map": {
+                    "model.language_model.layers.0.input_layernorm.weight": (
+                        "model-00001-of-00001.safetensors"
+                    )
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    captured = {}
+
+    class FakeRegistry:
+        @staticmethod
+        def register_model(architecture, model_class):
+            captured["registration"] = (architecture, model_class)
+
+    class FakeVllm:
+        def __init__(self, **kwargs):
+            captured["engine_args"] = kwargs
+
+    config = make_config(
+        local_model_path=str(model_path),
+        local_adapter_path=None,
+        local_infer_backend="vllm",
+    )
+    LocalChatCompletionClient(
+        config,
+        vllm_factory=FakeVllm,
+        sampling_params_factory=lambda **kwargs: kwargs,
+        vllm_model_registry=FakeRegistry,
+    )
+
+    assert captured["registration"] == (
+        "WeCloneQwen3_5ForCausalLM",
+        "weclone.eval.vllm_qwen35:WeCloneQwen3_5ForCausalLM",
+    )
+    assert captured["engine_args"]["model"] == str(model_path.resolve())
+    assert captured["engine_args"]["hf_overrides"]["architectures"] == [
+        "WeCloneQwen3_5ForCausalLM"
+    ]
+
+
 def test_summary_and_report_only_aggregate_judge_output(tmp_path) -> None:
     config = make_config(output_dir=str(tmp_path))
     results = [

@@ -112,6 +112,7 @@
         // 本地模式可在这里配置，或运行时使用 --model-path/--adapter-path；null 表示使用下面的 candidate API
         "local_model_path": null,
         "local_adapter_path": null,
+        "local_max_model_len": 4096,
         "candidate": {
             "base_url": "http://127.0.0.1:8005/v1",
             "api_key": "sk-test",
@@ -129,7 +130,8 @@
             "retry_delay": 1,
             "temperature": 0,
             "max_tokens": 1200,
-            "json_response_format": true
+            "json_response_format": true,
+            "extra_body": {}
         },
         "generation_temperature": 0.2,
         "generation_top_p": 0.9,

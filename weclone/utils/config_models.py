@@ -293,6 +293,9 @@ class BenchmarkEndpointConfig(BaseConfigModel):
     timeout: float = Field(120.0, gt=0, description="Request timeout in seconds")
     max_retries: int = Field(2, ge=0, description="Additional retries after a failed request")
     retry_delay: float = Field(1.0, ge=0, description="Delay between retries in seconds")
+    extra_body: dict[str, object] = Field(
+        default_factory=dict, description="Optional provider-specific OpenAI request parameters"
+    )
 
 
 class BenchmarkJudgeConfig(BenchmarkEndpointConfig):
@@ -316,6 +319,9 @@ class BenchmarkArgs(BaseConfigModel):
     candidate: Optional[BenchmarkEndpointConfig] = None
     local_model_path: Optional[str] = Field(None, description="Optional local base or merged model path")
     local_adapter_path: Optional[str] = Field(None, description="Optional local LoRA adapter path")
+    local_max_model_len: int = Field(
+        4096, gt=0, description="Maximum context length used by the local inference engine"
+    )
     judge: BenchmarkJudgeConfig
     generation_temperature: float = Field(0.2, ge=0, le=2)
     generation_top_p: float = Field(0.9, gt=0, le=1)

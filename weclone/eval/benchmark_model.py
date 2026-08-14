@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -136,6 +137,8 @@ class OpenAICompletionClient:
             params["seed"] = seed
         if json_response_format:
             params["response_format"] = {"type": "json_object"}
+        if self.endpoint.extra_body:
+            params["extra_body"] = self.endpoint.extra_body
 
         response = self.client.chat.completions.create(**params)
         content = response.choices[0].message.content
@@ -147,7 +150,15 @@ class OpenAICompletionClient:
 class LocalChatCompletionClient:
     """Load one local model once and expose the benchmark completion interface."""
 
-    def __init__(self, config: WCBenchmarkConfig, chat_model_factory: Any = None):
+    def __init__(
+        self,
+        config: WCBenchmarkConfig,
+        chat_model_factory: Any = None,
+        vllm_factory: Any = None,
+        sampling_params_factory: Any = None,
+        lora_request_factory: Any = None,
+        vllm_model_registry: Any = None,
+    ):
         if not config.local_model_path:
             raise ValueError("A local model path is required")
 
@@ -157,9 +168,61 @@ class LocalChatCompletionClient:
             if config.local_adapter_path
             else None
         )
+        self.backend = config.local_infer_backend
+        self.repetition_penalty = config.local_repetition_penalty
+        self.enable_thinking = config.enable_thinking
+        self.seed = config.seed
+        self.lock = Lock()
+
+        logger.info(
+            f"Loading local benchmark model from {model_path}"
+            + (f" with adapter {adapter_path}" if adapter_path else "")
+            + f" using the {self.backend} backend"
+        )
+
+        if self.backend == "vllm":
+            if vllm_factory is None or sampling_params_factory is None:
+                shim_root = Path(__file__).resolve().parents[1] / "_vllm_shims"
+                if str(shim_root) not in sys.path:
+                    sys.path.insert(0, str(shim_root))
+                from vllm import LLM, SamplingParams
+
+                vllm_factory = vllm_factory or LLM
+                sampling_params_factory = sampling_params_factory or SamplingParams
+
+            engine_args: dict[str, Any] = {
+                "model": model_path,
+                "trust_remote_code": config.trust_remote_code,
+                "enable_lora": adapter_path is not None,
+                "seed": config.seed,
+                "max_model_len": config.local_max_model_len,
+                **config.local_vllm_config,
+            }
+            if _uses_bitsandbytes(model_path):
+                engine_args.setdefault("quantization", "bitsandbytes")
+                engine_args.setdefault("load_format", "bitsandbytes")
+
+            _configure_qwen35_language_model_prefix_loader(
+                model_path,
+                engine_args,
+                model_registry=vllm_model_registry,
+            )
+
+            self.vllm_model = vllm_factory(**engine_args)
+            self.sampling_params_factory = sampling_params_factory
+            self.lora_request = None
+            if adapter_path:
+                if lora_request_factory is None:
+                    from vllm.lora.request import LoRARequest
+
+                    lora_request_factory = LoRARequest
+                self.lora_request = lora_request_factory("benchmark", 1, adapter_path)
+            self.chat_model = None
+            return
+
         args: dict[str, Any] = {
             "model_name_or_path": model_path,
-            "infer_backend": config.local_infer_backend,
+            "infer_backend": "huggingface",
             "template": config.template,
             "finetuning_type": str(config.finetuning_type),
             "trust_remote_code": config.trust_remote_code,
@@ -178,12 +241,10 @@ class LocalChatCompletionClient:
 
             chat_model_factory = ChatModel
 
-        logger.info(
-            f"Loading local benchmark model from {model_path}"
-            + (f" with adapter {adapter_path}" if adapter_path else "")
-        )
         self.chat_model = chat_model_factory(args)
-        self.lock = Lock()
+        self.vllm_model = None
+        self.sampling_params_factory = None
+        self.lora_request = None
 
     def complete(
         self,
@@ -198,6 +259,26 @@ class LocalChatCompletionClient:
         del seed
         if json_response_format:
             raise ValueError("JSON response mode is not supported by the local candidate model")
+
+        if self.backend == "vllm":
+            sampling_params = self.sampling_params_factory(
+                temperature=temperature,
+                top_p=top_p or 1.0,
+                max_tokens=max_tokens,
+                repetition_penalty=self.repetition_penalty,
+                seed=self.seed,
+            )
+            with self.lock:
+                outputs = self.vllm_model.chat(
+                    messages,
+                    sampling_params=sampling_params,
+                    lora_request=self.lora_request,
+                    use_tqdm=False,
+                    chat_template_kwargs={"enable_thinking": self.enable_thinking},
+                )
+            if not outputs or not outputs[0].outputs or not outputs[0].outputs[0].text:
+                raise ValueError("The local vLLM candidate model returned an empty response")
+            return outputs[0].outputs[0].text.strip()
 
         system_messages = [message["content"] for message in messages if message["role"] == "system"]
         history = [message for message in messages if message["role"] != "system"]
@@ -233,6 +314,80 @@ def _resolve_local_model_dir(path: str, label: str) -> str:
     if not candidate.is_dir():
         raise FileNotFoundError(f"Local {label} directory does not exist: {candidate}")
     return str(candidate.resolve())
+
+
+def _uses_bitsandbytes(model_path: str) -> bool:
+    config_path = Path(model_path) / "config.json"
+    try:
+        model_config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    quantization_config = model_config.get("quantization_config") or {}
+    return quantization_config.get("quant_method") == "bitsandbytes"
+
+
+def _configure_qwen35_language_model_prefix_loader(
+    model_path: str,
+    engine_args: dict[str, Any],
+    *,
+    model_registry: Any = None,
+) -> bool:
+    """Let vLLM stream a text checkpoint with ``model.language_model.*`` keys."""
+    if not _qwen35_checkpoint_has_language_model_prefix(model_path):
+        return False
+
+    if model_registry is None:
+        from vllm import ModelRegistry
+
+        model_registry = ModelRegistry
+
+    architecture = "WeCloneQwen3_5ForCausalLM"
+    model_registry.register_model(
+        architecture,
+        "weclone.eval.vllm_qwen35:WeCloneQwen3_5ForCausalLM",
+    )
+
+    hf_overrides = engine_args.get("hf_overrides") or {}
+    if not isinstance(hf_overrides, dict):
+        raise TypeError("vLLM hf_overrides must be a mapping for Qwen3.5 weight remapping")
+    engine_args["hf_overrides"] = {
+        **hf_overrides,
+        "architectures": [architecture],
+    }
+    logger.info(
+        "Detected Qwen3.5 text weights with model.language_model.* names; "
+        "vLLM will remap them to model.* while streaming the checkpoint"
+    )
+    return True
+
+
+def _qwen35_checkpoint_has_language_model_prefix(model_path: str) -> bool:
+    checkpoint = Path(model_path)
+    try:
+        model_config = json.loads((checkpoint / "config.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if model_config.get("model_type") != "qwen3_5_text":
+        return False
+
+    index_path = checkpoint / "model.safetensors.index.json"
+    try:
+        weight_map = json.loads(index_path.read_text(encoding="utf-8")).get("weight_map", {})
+    except (OSError, json.JSONDecodeError):
+        weight_map = {}
+    if any(name.startswith("model.language_model.") for name in weight_map):
+        return True
+
+    try:
+        from safetensors import safe_open
+
+        for shard_path in checkpoint.glob("*.safetensors"):
+            with safe_open(shard_path, framework="pt", device="cpu") as shard:
+                if any(name.startswith("model.language_model.") for name in shard.keys()):
+                    return True
+    except (OSError, RuntimeError):
+        return False
+    return False
 
 
 def _conversation_fingerprint(messages: list[BenchmarkMessage], reference: str) -> str:
